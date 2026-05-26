@@ -81,9 +81,22 @@ fun ChatScreen(
         }
     }
 
-    // Subsequent updates animate smoothly to the latest event.
+    // Smart auto-scroll: only follow the latest message when the user is
+    // already near the bottom. If they've scrolled up to read history, leave
+    // them alone — yanking the viewport while the agent is typing is one of
+    // the most annoying UX bugs in chat apps.
+    val isNearBottom by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            val total = info.totalItemsCount
+            // Within 2 items of the end counts as "tracking the tail"
+            total == 0 || lastVisible >= total - 2
+        }
+    }
     LaunchedEffect(messages.size, liveDelta) {
         if (!initialScrollDone) return@LaunchedEffect
+        if (!isNearBottom) return@LaunchedEffect  // user is reading history
         val target = messages.size + (if (liveDelta != null) 1 else 0) - 1
         if (target >= 0) listState.animateScrollToItem(target)
     }

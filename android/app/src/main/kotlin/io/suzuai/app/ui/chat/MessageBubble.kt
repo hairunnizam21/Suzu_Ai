@@ -351,37 +351,106 @@ private fun ToolCallChips(rawJson: String) {
 fun LiveDeltaBubble(delta: LiveDelta) {
     when (delta) {
         is LiveDelta.Text -> {
-            BubbleContainer(
-                bg = SuzuColors.AssistantBubble,
-                accent = SuzuColors.AccentGreen,
-                leadingIcon = Icons.Outlined.SmartToy,
-                header = "suzu · streaming",
-                body = delta.text + "▌",
+            // Streaming text + animated blinking caret to show progress.
+            val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "caret")
+            val alpha by infinite.animateFloat(
+                initialValue = 0.2f,
+                targetValue = 1f,
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                    animation = androidx.compose.animation.core.tween(durationMillis = 600),
+                    repeatMode = androidx.compose.animation.core.RepeatMode.Reverse,
+                ),
+                label = "caret-alpha",
             )
-        }
-        is LiveDelta.ToolStart -> {
-            BubbleContainer(
-                bg = SuzuColors.ToolBubble,
-                accent = SuzuColors.AccentYellow,
-                leadingIcon = Icons.Outlined.Terminal,
-                header = "tool · ${delta.name} (running)",
-                body = delta.input.toString(),
-                codeStyle = true,
-            )
-        }
-        is LiveDelta.Iteration -> {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
-            ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                 Text(
-                    "iteration ${delta.n}/${delta.max}",
-                    style = MaterialTheme.typography.labelSmall.copy(color = SuzuColors.Muted),
+                    delta.text,
+                    style = MaterialTheme.typography.bodyMedium.copy(color = SuzuColors.OnSurface),
+                )
+                Text(
+                    "▌",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = SuzuColors.AccentCyan.copy(alpha = alpha),
+                    ),
                 )
             }
         }
+        is LiveDelta.ToolStart -> {
+            ToolRunningBubble(name = delta.name, input = delta.input.toString())
+        }
+        is LiveDelta.Iteration -> {
+            ThinkingDots(label = "iteration ${delta.n}${if (delta.max > 0) "/${delta.max}" else ""}")
+        }
+    }
+}
+
+@Composable
+private fun ThinkingDots(label: String) {
+    val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "dots")
+    val phase by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 3f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(durationMillis = 900),
+        ),
+        label = "dots-phase",
+    )
+    val visibleDots = phase.toInt().coerceIn(0, 3)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "$label · thinking" + ".".repeat(visibleDots),
+            style = MaterialTheme.typography.labelSmall.copy(color = SuzuColors.AccentCyan),
+        )
+    }
+}
+
+@Composable
+private fun ToolRunningBubble(name: String, input: String) {
+    val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "pulse")
+    val alpha by infinite.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(durationMillis = 700),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse,
+        ),
+        label = "pulse-alpha",
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(SuzuColors.ToolBubble)
+            .border(1.dp, SuzuColors.AccentYellow.copy(alpha = alpha), RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Outlined.Terminal,
+                contentDescription = null,
+                tint = SuzuColors.AccentYellow.copy(alpha = alpha),
+                modifier = Modifier.size(14.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "running tool · $name",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    color = SuzuColors.AccentYellow,
+                ),
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            input.take(200),
+            style = MaterialTheme.typography.bodySmall.copy(color = SuzuColors.Muted),
+        )
     }
 }
 
