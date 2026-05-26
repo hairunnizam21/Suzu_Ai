@@ -68,10 +68,16 @@ async def stream_completion(
     system_prompt: str | None,
     messages: list[Message],
     tool_specs: list[dict[str, Any]],
-    max_tokens: int = 4096,
+    max_tokens: int | None = None,
     temperature: float = 0.7,
 ) -> AsyncIterator[ProviderEvent]:
-    """Stream one assistant turn from the provider, rotating keys on failure."""
+    """Stream one assistant turn from the provider, rotating keys on failure.
+
+    `max_tokens` is optional: pass ``None`` to let the provider use its own
+    default (this maps to the "Unlimited" toggle in the Android client).
+    Anthropic requires the field, so we substitute a safe ceiling in that
+    branch only.
+    """
 
     if not profile.api_keys:
         raise ProviderError("provider profile has no API keys")
@@ -110,7 +116,7 @@ async def _stream_anthropic(
     system_prompt: str | None,
     messages: list[Message],
     tool_specs: list[dict[str, Any]],
-    max_tokens: int,
+    max_tokens: int | None,
     temperature: float,
 ) -> AsyncIterator[ProviderEvent]:
     base = (profile.base_url or "https://api.anthropic.com").rstrip("/")
@@ -121,9 +127,12 @@ async def _stream_anthropic(
         "content-type": "application/json",
         **profile.extra_headers,
     }
+    # Anthropic requires max_tokens — fall back to a generous default when the
+    # client toggled Unlimited.
+    effective_max = max_tokens if max_tokens is not None else 64000
     body: dict[str, Any] = {
         "model": profile.model,
-        "max_tokens": max_tokens,
+        "max_tokens": effective_max,
         "temperature": temperature,
         "stream": True,
         "messages": _anthropic_messages(messages),
@@ -240,7 +249,7 @@ async def _stream_openai_compat(
     system_prompt: str | None,
     messages: list[Message],
     tool_specs: list[dict[str, Any]],
-    max_tokens: int,
+    max_tokens: int | None,
     temperature: float,
 ) -> AsyncIterator[ProviderEvent]:
     base = (profile.base_url or "https://api.openai.com").rstrip("/")
@@ -256,10 +265,13 @@ async def _stream_openai_compat(
     body: dict[str, Any] = {
         "model": profile.model,
         "messages": msgs_oa,
-        "max_tokens": max_tokens,
         "temperature": temperature,
         "stream": True,
     }
+    # Omit max_tokens entirely when the client requests Unlimited so each
+    # provider's own default applies (some have higher caps than 4096).
+    if max_tokens is not None:
+        body["max_tokens"] = max_tokens
     if tool_specs:
         body["tools"] = [
             {

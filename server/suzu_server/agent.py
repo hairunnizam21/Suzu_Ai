@@ -16,6 +16,7 @@ from .providers import (
     ProviderExhausted,
     stream_completion,
 )
+from .remote import SshExecutor
 from .schemas import ChatRequest, Message
 from .tools import ALL_TOOLS, get_tool, tool_names
 from .tools.base import ToolContext
@@ -109,8 +110,20 @@ async def run_agent(req: ChatRequest) -> AsyncIterator[dict[str, Any]]:
             yield {"type": "done", "stop_reason": stop_reason or "stop"}
             return
 
-        # Execute tools
-        ctx = ToolContext(session_id=chat_id, workspace=workspace, on_preview=_make_preview_callback())
+        # Execute tools — pass through the optional SSH executor so the shell
+        # tool can pick it up and run commands against the user's own box.
+        ssh_executor: SshExecutor | None = None
+        if req.ssh_target is not None:
+            ssh_executor = SshExecutor(
+                target=req.ssh_target,
+                max_output_bytes=settings.shell_max_output_bytes,
+            )
+        ctx = ToolContext(
+            session_id=chat_id,
+            workspace=workspace,
+            on_preview=_make_preview_callback(),
+            extra={"ssh_executor": ssh_executor} if ssh_executor else {},
+        )
         for tu in tool_uses:
             tool = get_tool(tu.name)
             if tool is None:

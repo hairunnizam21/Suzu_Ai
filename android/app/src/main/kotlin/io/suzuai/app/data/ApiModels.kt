@@ -21,6 +21,22 @@ data class ProviderProfile(
     @SerialName("extra_headers") val extraHeaders: Map<String, String> = emptyMap(),
 )
 
+/**
+ * Optional SSH target. When the user fills in their box's credentials the
+ * agent's shell tool runs commands over SSH against this host instead of on
+ * the FastAPI server's local filesystem.
+ */
+@Serializable
+data class SshTarget(
+    val host: String,
+    val port: Int = 22,
+    val user: String,
+    @SerialName("auth_mode") val authMode: String = "password",
+    val password: String? = null,
+    @SerialName("private_key") val privateKey: String? = null,
+    val workspace: String? = null,
+)
+
 @Serializable
 data class ApiMessage(
     val role: String,
@@ -37,9 +53,11 @@ data class ChatRequest(
     val provider: ProviderProfile,
     @SerialName("system_prompt") val systemPrompt: String? = null,
     @SerialName("max_iterations") val maxIterations: Int = 100,
-    @SerialName("max_tokens") val maxTokens: Int = 4096,
+    /** Omitted when the user toggles Unlimited — provider keeps its own default. */
+    @SerialName("max_tokens") val maxTokens: Int? = null,
     val temperature: Float = 0.7f,
     @SerialName("enabled_tools") val enabledTools: List<String>? = null,
+    @SerialName("ssh_target") val sshTarget: SshTarget? = null,
     val messages: List<ApiMessage>,
 )
 

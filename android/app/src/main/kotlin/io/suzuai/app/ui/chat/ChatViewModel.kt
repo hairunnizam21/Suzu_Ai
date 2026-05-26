@@ -8,18 +8,18 @@ import io.suzuai.app.data.ChatRepository
 import io.suzuai.app.data.ChatRequest
 import io.suzuai.app.data.ProviderProfile
 import io.suzuai.app.data.SettingsStore
+import io.suzuai.app.data.SshTarget
 import io.suzuai.app.data.SuzuClient
+import io.suzuai.app.data.asBooleanOrNull
+import io.suzuai.app.data.asIntOrNull
 import io.suzuai.app.data.asJsonObjectOrNull
 import io.suzuai.app.data.asStringOrNull
-import io.suzuai.app.data.asIntOrNull
-import io.suzuai.app.data.asBooleanOrNull
 import io.suzuai.app.data.db.MessageEntity
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -65,21 +65,51 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
     private var streamJob: Job? = null
 
     init {
+        viewModelScope.launch { refresh() }
+    }
+
+    /** Re-read settings so the UI shows current provider name + SSH status. */
+    fun refresh() {
         viewModelScope.launch {
-            val activeId = settings.activeProviderId.first()
-            val profiles = settings.providerProfiles.first()
-            val active = profiles.firstOrNull { it.id == activeId } ?: profiles.firstOrNull()
-            _state.value = _state.value.copy(activeProvider = active, profilesAvailable = profiles.size)
+            val provider = buildProvider()
+            val ssh = buildSshTarget()
+            _state.value = _state.value.copy(
+                activeProvider = provider,
+                sshConfigured = ssh != null,
+            )
         }
     }
 
-    fun refreshActiveProvider() {
-        viewModelScope.launch {
-            val activeId = settings.activeProviderId.first()
-            val profiles = settings.providerProfiles.first()
-            val active = profiles.firstOrNull { it.id == activeId } ?: profiles.firstOrNull()
-            _state.value = _state.value.copy(activeProvider = active, profilesAvailable = profiles.size)
-        }
+    private suspend fun buildProvider(): ProviderProfile? {
+        val kind = settings.aiKind.first()
+        val baseUrl = settings.aiBaseUrl.first()
+        val model = settings.aiModel.first()
+        val apiKey = settings.aiApiKey.first()
+        if (model.isBlank() || apiKey.isBlank()) return null
+        return ProviderProfile(
+            id = "primary",
+            name = kind,
+            kind = if (kind == "anthropic") "anthropic" else "openai_compat",
+            baseUrl = baseUrl.ifBlank { null },
+            model = model,
+            apiKeys = listOf(apiKey),
+        )
+    }
+
+    private suspend fun buildSshTarget(): SshTarget? {
+        val host = settings.sshHost.first()
+        val user = settings.sshUser.first()
+        if (host.isBlank() || user.isBlank()) return null
+        val authMode = settings.sshAuthMode.first()
+        return SshTarget(
+            host = host,
+            port = settings.sshPort.first(),
+            user = user,
+            authMode = authMode,
+            password = if (authMode == "password") settings.sshPassword.first().ifBlank { null } else null,
+            privateKey = if (authMode == "key") settings.sshPrivateKey.first().ifBlank { null } else null,
+            workspace = settings.sshWorkspace.first().ifBlank { null },
+        )
     }
 
     fun cancel() {
@@ -91,17 +121,24 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
 
     fun send(prompt: String, onCreatedNewChat: (String) -> Unit = {}) {
         if (prompt.isBlank() || _state.value.busy) return
-        val provider = _state.value.activeProvider
-        if (provider == null) {
-            _state.value = _state.value.copy(error = "No provider configured. Open Settings → API Providers.")
-            return
-        }
         streamJob?.cancel()
         streamJob = viewModelScope.launch {
             _state.value = _state.value.copy(busy = true, error = null)
             try {
+                val provider = buildProvider() ?: run {
+                    _state.value = _state.value.copy(
+                        error = "AI provider tidak lengkap — buka Settings → AI Provider.",
+                        busy = false,
+                    )
+                    return@launch
+                }
+                val sshTarget = buildSshTarget()
+                val unlimited = settings.aiMaxTokensUnlimited.first()
+                val maxTokens = if (unlimited) null else settings.aiMaxTokens.first()
+                val temperature = settings.aiTemperature.first()
+                val maxIter = settings.defaultMaxIterations.first()
+
                 val chatId = _state.value.chatId
-                // Build the message list from persisted history (if any) + the new prompt
                 val historyMsgs: List<ApiMessage> = if (chatId != null) {
                     repo.observeMessages(chatId).first().map(::toApiMessage)
                 } else emptyList()
@@ -111,11 +148,13 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
                     chatId = chatId,
                     title = if (chatId == null) prompt.lineSequence().first().take(60) else null,
                     provider = provider,
-                    maxIterations = settings.defaultMaxIterations.first(),
+                    maxIterations = maxIter,
+                    maxTokens = maxTokens,
+                    temperature = temperature,
+                    sshTarget = sshTarget,
                     messages = historyMsgs + newUser,
                 )
 
-                // Persist the user message *now* so the UI shows it immediately
                 val ensuredChatId = chatId ?: java.util.UUID.randomUUID().toString().replace("-", "")
                 if (chatId == null) {
                     repo.ensureChat(ensuredChatId, title = request.title.orEmpty().ifBlank { "New chat" })
@@ -123,6 +162,11 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
                     onCreatedNewChat(ensuredChatId)
                 }
                 repo.appendMessage(ensuredChatId, role = "user", content = prompt)
+
+                _state.value = _state.value.copy(
+                    activeProvider = provider,
+                    sshConfigured = sshTarget != null,
+                )
 
                 consumeStream(request, ensuredChatId)
             } catch (t: Throwable) {
@@ -267,7 +311,7 @@ data class ChatUiState(
     val busy: Boolean = false,
     val error: String? = null,
     val activeProvider: ProviderProfile? = null,
-    val profilesAvailable: Int = 0,
+    val sshConfigured: Boolean = false,
 )
 
 sealed interface LiveDelta {

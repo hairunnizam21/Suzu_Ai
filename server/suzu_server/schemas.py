@@ -36,6 +36,26 @@ class Message(BaseModel):
     created_at: int | None = None
 
 
+SshAuthMode = Literal["password", "key"]
+
+
+class SshTarget(BaseModel):
+    """Optional SSH target. When set, the `shell` tool executes commands over
+    SSH against this host instead of running on the server's local filesystem.
+
+    Credentials live only in memory for the duration of the request — they are
+    never written to disk by the server.
+    """
+
+    host: str
+    port: int = 22
+    user: str
+    auth_mode: SshAuthMode = "password"
+    password: str | None = None
+    private_key: str | None = None
+    workspace: str | None = None
+
+
 class ChatRequest(BaseModel):
     chat_id: str | None = Field(
         default=None,
@@ -45,12 +65,16 @@ class ChatRequest(BaseModel):
     provider: ProviderProfile
     system_prompt: str | None = None
     max_iterations: int = 100
-    max_tokens: int = 4096
+    max_tokens: int | None = Field(
+        default=None,
+        description="When null, the provider's own default is used (Unlimited toggle from the client).",
+    )
     temperature: float = 0.7
     enabled_tools: list[str] | None = Field(
         default=None,
         description="If null, all registered tools are enabled.",
     )
+    ssh_target: SshTarget | None = None
     messages: list[Message]
 
 
