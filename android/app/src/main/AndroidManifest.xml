@@ -14,7 +14,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Suzu.Splash"
         android:name=".SuzuApp"
-        android:usesCleartextTraffic="false"
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         tools:targetApi="34"
         xmlns:tools="http://schemas.android.com/tools">
 

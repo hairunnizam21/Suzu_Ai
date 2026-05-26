@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Self-hosted Suzu_Ai users typically point the app at their own VPS over
+    plain HTTP (e.g. http://1.2.3.4:8765) before they have a domain + TLS set
+    up. Android 9+ blocks cleartext by default, so we explicitly opt in.
+
+    For production / public deployments, terminate TLS in front of the FastAPI
+    server (Cloudflare Tunnel, nginx + Let's Encrypt, Caddy, ...) and set
+    cleartextTrafficPermitted to "false".
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
