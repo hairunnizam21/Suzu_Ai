@@ -47,7 +47,18 @@ class ChatRepository(
         toolUseId: String? = null,
         toolName: String? = null,
     ): Long {
-        chats.touch(chatId, System.currentTimeMillis())
+        // Defensive: make sure the parent chat exists. This prevents the
+        // SQLITE_CONSTRAINT_FOREIGNKEY (code 787) crash that surfaces if a
+        // streamed event arrives before the chat row is materialised — e.g.
+        // when the server mints its own chat_id and we race to persist a
+        // tool_result before the "chat" event handler has finished its
+        // ensureChat call.
+        val now = System.currentTimeMillis()
+        if (chats.byId(chatId) == null) {
+            chats.upsert(ChatEntity(id = chatId, title = "New chat", createdAt = now, updatedAt = now))
+        } else {
+            chats.touch(chatId, now)
+        }
         return messages.insert(
             MessageEntity(
                 chatId = chatId,
@@ -56,7 +67,7 @@ class ChatRepository(
                 toolCallsJson = toolCallsJson,
                 toolUseId = toolUseId,
                 toolName = toolName,
-                createdAt = System.currentTimeMillis(),
+                createdAt = now,
             )
         )
     }
