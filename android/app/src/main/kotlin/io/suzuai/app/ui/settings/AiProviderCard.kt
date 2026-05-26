@@ -328,8 +328,8 @@ fun AiProviderCard() {
                 temperature = temperature,
             )
             // Verify
-            val readKey = kotlinx.coroutines.flow.first(app.settings.aiApiKey)
-            val readModel = kotlinx.coroutines.flow.first(app.settings.aiModel)
+            val readKey = app.settings.aiApiKey.first()
+            val readModel = app.settings.aiModel.first()
             if (readKey == apiKey.trim() && readModel == (model.ifBlank { defaultModel(kind) }).trim()) {
                 SaveOutcome.Ok("AI provider tersimpan: ${labelOf(kind)}")
             } else {

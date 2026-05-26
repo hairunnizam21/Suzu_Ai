@@ -177,8 +177,8 @@ fun RemoteShellCard() {
                 privateKey = privateKey,
                 workspace = workspace,
             )
-            val readHost = kotlinx.coroutines.flow.first(app.settings.sshHost)
-            val readUser = kotlinx.coroutines.flow.first(app.settings.sshUser)
+            val readHost = app.settings.sshHost.first()
+            val readUser = app.settings.sshUser.first()
             if (readHost == host.trim() && readUser == user.trim()) {
                 if (host.isBlank()) SaveOutcome.Ok("SSH dikosongkan (guna server tempatan)")
                 else SaveOutcome.Ok("Tersimpan: $user@$host:${portText.ifBlank { "22" }}")

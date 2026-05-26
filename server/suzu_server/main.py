@@ -259,14 +259,14 @@ async def _drive_run(run: Run) -> None:
     assistant_buf: list[str] = []
     pending_tool_calls: list[dict] = []
 
-    def _flush_assistant() -> None:
+    async def _flush_assistant() -> None:
         """Persist any buffered assistant text/tool_calls as one message."""
         if assistant_buf or pending_tool_calls:
-            asyncio.create_task(append_message(chat_id, {
+            await append_message(chat_id, {
                 "role": "assistant",
                 "content": "".join(assistant_buf),
                 "tool_calls": list(pending_tool_calls),
-            }))
+            })
             assistant_buf.clear()
             pending_tool_calls.clear()
 
