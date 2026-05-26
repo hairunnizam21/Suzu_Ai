@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.suzuai.app.SuzuApp
 import io.suzuai.app.data.ApiMessage
+import io.suzuai.app.data.AttachmentRef
 import io.suzuai.app.data.ChatRepository
 import io.suzuai.app.data.ChatRequest
 import io.suzuai.app.data.ProviderProfile
@@ -47,6 +48,10 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
 
     private val _liveDelta = MutableStateFlow<LiveDelta?>(null)
     val liveDelta: StateFlow<LiveDelta?> = _liveDelta.asStateFlow()
+
+    /** Files the user picked but hasn't sent yet — uploaded to server lazily on send. */
+    private val _pendingAttachments = MutableStateFlow<List<PendingAttachment>>(emptyList())
+    val pendingAttachments: StateFlow<List<PendingAttachment>> = _pendingAttachments.asStateFlow()
 
     /** Persisted messages for the current chat (or empty until first send). */
     val messages: StateFlow<List<MessageEntity>> = _state
@@ -124,6 +129,34 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
     }
 
     /**
+     * Stage an attachment locally. The actual upload to the server happens at
+     * send time so we have a chat_id to scope it to. Returns false if the
+     * file fails to register (e.g., unreadable / oversized).
+     */
+    fun addAttachment(localFile: java.io.File, mimeType: String?, displayName: String?): Boolean {
+        if (!localFile.exists() || !localFile.canRead()) return false
+        val pa = PendingAttachment(
+            file = localFile,
+            mimeType = mimeType ?: "application/octet-stream",
+            displayName = displayName ?: localFile.name,
+        )
+        _pendingAttachments.value = _pendingAttachments.value + pa
+        return true
+    }
+
+    fun removeAttachment(index: Int) {
+        val list = _pendingAttachments.value.toMutableList()
+        if (index in list.indices) {
+            list.removeAt(index)
+            _pendingAttachments.value = list
+        }
+    }
+
+    fun clearAttachments() {
+        _pendingAttachments.value = emptyList()
+    }
+
+    /**
      * Inject a follow-up message into a live run. Used by the composer when
      * the user types while [ChatUiState.busy] is true — the new text is
      * spliced into the agent's conversation between iterations instead of
@@ -191,7 +224,41 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
                 val historyMsgs: List<ApiMessage> = if (chatId != null) {
                     repo.observeMessages(chatId).first().map(::toApiMessage)
                 } else emptyList()
-                val newUser = ApiMessage(role = "user", content = prompt)
+
+                // Ensure we have a chat_id before uploads — they need to be
+                // scoped to it. If new, mint locally and persist immediately.
+                val ensuredChatId = chatId ?: java.util.UUID.randomUUID().toString().replace("-", "")
+                if (chatId == null) {
+                    repo.ensureChat(ensuredChatId, title = prompt.lineSequence().first().take(60))
+                    _state.value = _state.value.copy(chatId = ensuredChatId)
+                    onCreatedNewChat(ensuredChatId)
+                }
+
+                // Upload any pending attachments. Failures are surfaced but
+                // don't abort the send — the agent can still work on the text.
+                val pending = _pendingAttachments.value
+                val uploaded = mutableListOf<AttachmentRef>()
+                for (pa in pending) {
+                    runCatching { client.uploadFile(ensuredChatId, pa.file, pa.mimeType) }
+                        .onSuccess { uploaded.add(it) }
+                        .onFailure { _state.value = _state.value.copy(error = "Upload gagal: ${it.message}") }
+                }
+                _pendingAttachments.value = emptyList()
+
+                // Compose the user message: prompt text plus a footer listing
+                // attached file paths so the agent can `read` them on demand.
+                val attachmentFooter = if (uploaded.isEmpty()) "" else buildString {
+                    append("\n\n")
+                    append("Attached files (use `read` tool to inspect):\n")
+                    for (a in uploaded) {
+                        append("- [attached: ${a.relativePath}] (${a.filename}, ${a.mimeType}, ${a.sizeBytes} bytes)\n")
+                    }
+                }
+                val newUser = ApiMessage(
+                    role = "user",
+                    content = prompt + attachmentFooter,
+                    attachments = uploaded,
+                )
 
                 val request = ChatRequest(
                     chatId = chatId,
@@ -373,6 +440,12 @@ data class ChatUiState(
     val error: String? = null,
     val activeProvider: ProviderProfile? = null,
     val sshConfigured: Boolean = false,
+)
+
+data class PendingAttachment(
+    val file: java.io.File,
+    val mimeType: String,
+    val displayName: String,
 )
 
 sealed interface LiveDelta {

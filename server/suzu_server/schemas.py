@@ -34,6 +34,23 @@ class Message(BaseModel):
     tool_use_id: str | None = None
     name: str | None = None
     created_at: int | None = None
+    attachments: list["AttachmentRef"] = Field(default_factory=list)
+
+
+class AttachmentRef(BaseModel):
+    """Pointer to a file the user uploaded for the agent to inspect."""
+
+    id: str
+    filename: str
+    mime_type: str
+    size_bytes: int
+    relative_path: str = Field(
+        description="Path under the chat workspace, e.g. 'attachments/<id>/<filename>'.",
+    )
+
+
+# Resolve the forward reference inside Message.attachments
+Message.model_rebuild()
 
 
 SshAuthMode = Literal["password", "key"]

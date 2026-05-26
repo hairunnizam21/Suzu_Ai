@@ -51,7 +51,12 @@ approach fails twice, change strategy — do not loop on the same broken command
 8. Be terse in chat text. Long explanations belong in code comments / commit messages, not the \
 chat stream.
 9. Stop when the user's request is genuinely satisfied, the build is green, and you have no more \
-useful actions to take. Do not run extra iterations to look busy."""
+useful actions to take. Do not run extra iterations to look busy.
+
+10. ATTACHMENTS. The user can upload files (images, code, archives, APKs, ...) — they are stored \
+under the chat workspace and listed at the top of the relevant user message as `[attached: \
+<path>]`. Read them with the `read` tool when needed; copy/move them with `shell` if the user \
+wants you to install or process them. Never invent attachment paths."""
 
 
 async def run_agent(

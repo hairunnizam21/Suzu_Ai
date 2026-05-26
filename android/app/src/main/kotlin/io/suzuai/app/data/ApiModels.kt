@@ -44,6 +44,16 @@ data class ApiMessage(
     @SerialName("tool_calls") val toolCalls: List<JsonObject> = emptyList(),
     @SerialName("tool_use_id") val toolUseId: String? = null,
     val name: String? = null,
+    val attachments: List<AttachmentRef> = emptyList(),
+)
+
+@Serializable
+data class AttachmentRef(
+    val id: String,
+    val filename: String,
+    @SerialName("mime_type") val mimeType: String,
+    @SerialName("size_bytes") val sizeBytes: Long,
+    @SerialName("relative_path") val relativePath: String,
 )
 
 @Serializable

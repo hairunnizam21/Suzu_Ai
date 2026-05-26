@@ -8,9 +8,9 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from . import __version__
 from .agent import run_agent
@@ -27,6 +27,7 @@ from .db import (
 )
 from .runner import Run, new_chat_id, registry
 from .schemas import (
+    AttachmentRef,
     ChatDetail,
     ChatRequest,
     ChatSummary,
@@ -36,6 +37,7 @@ from .schemas import (
     RenameRequest,
     RunStatus,
 )
+from .files import resolve_path, save_attachment
 from .tools import tool_names
 
 logger = logging.getLogger("suzu.main")
@@ -160,6 +162,46 @@ async def chat_inject(
     # the agent picks it up.
     await append_message(chat_id, msg.model_dump())
     return {"status": "queued"}
+
+
+@app.post("/v1/files/upload", response_model=AttachmentRef)
+async def file_upload(
+    chat_id: str,
+    file: UploadFile = File(...),
+    _: None = Depends(require_token),
+) -> AttachmentRef:
+    """Upload a file the agent can reference. Stored under the chat workspace."""
+
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="chat_id query param required")
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="empty file")
+    saved = await save_attachment(
+        chat_id=chat_id,
+        filename=file.filename or "upload.bin",
+        content=contents,
+        mime_type=file.content_type,
+    )
+    return AttachmentRef(**saved.as_dict())
+
+
+@app.get("/v1/files/{chat_id}/{path:path}")
+async def file_download(
+    chat_id: str,
+    path: str,
+    _: None = Depends(require_token),
+) -> FileResponse:
+    """Stream back any file from a chat workspace (read-only)."""
+
+    abs_path = resolve_path(chat_id, path)
+    if abs_path is None:
+        raise HTTPException(status_code=404, detail="file not found")
+    return FileResponse(
+        abs_path,
+        filename=abs_path.name,
+        media_type="application/octet-stream",
+    )
 
 
 @app.post("/v1/chat")

@@ -69,6 +69,8 @@ private fun UserBubble(m: MessageEntity) {
 
 @Composable
 private fun AssistantBubble(m: MessageEntity) {
+    var previewBlock by remember(m.id) { mutableStateOf<PreviewableBlock?>(null) }
+    val blocks = remember(m.content) { extractPreviewableBlocks(m.content) }
     BubbleContainer(
         bg = SuzuColors.AssistantBubble,
         accent = SuzuColors.AccentGreen,
@@ -76,9 +78,26 @@ private fun AssistantBubble(m: MessageEntity) {
         header = "suzu",
         body = m.content,
     ) {
+        if (blocks.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            blocks.forEachIndexed { idx, block ->
+                PreviewChip(
+                    label = "Preview ${block.language ?: "code"} #${idx + 1}",
+                    onClick = { previewBlock = block },
+                )
+            }
+        }
         if (m.toolCallsJson.length > 2) {
             ToolCallChips(rawJson = m.toolCallsJson)
         }
+    }
+    val pb = previewBlock
+    if (pb != null) {
+        PreviewDialog(
+            title = pb.language ?: "code",
+            html = buildPreviewHtml(pb.language, pb.code),
+            onDismiss = { previewBlock = null },
+        )
     }
 }
 
@@ -266,6 +285,56 @@ fun LiveDeltaBubble(delta: LiveDelta) {
 private fun copyToClipboard(ctx: Context, label: String, text: String) {
     val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     cm.setPrimaryClip(ClipData.newPlainText(label, text))
+}
+
+/** A code block we can render in the canvas WebView. */
+data class PreviewableBlock(val language: String?, val code: String)
+
+/**
+ * Find triple-backtick fenced code blocks whose language matches [isPreviewable].
+ * Returns them in document order. Falls back to detecting raw `<html>` /
+ * `<svg>` blocks even without fences.
+ */
+fun extractPreviewableBlocks(text: String): List<PreviewableBlock> {
+    if (text.isBlank()) return emptyList()
+    val out = mutableListOf<PreviewableBlock>()
+    val fence = Regex("```([a-zA-Z0-9]+)?\\s*\\n([\\s\\S]*?)```")
+    fence.findAll(text).forEach { m ->
+        val lang = m.groupValues[1].ifBlank { null }
+        val body = m.groupValues[2]
+        if (isPreviewable(lang)) {
+            out.add(PreviewableBlock(language = lang, code = body))
+        } else if (lang == null) {
+            // Sometimes the agent forgets to mark the language
+            val trimmed = body.trim()
+            if (trimmed.startsWith("<!doctype", ignoreCase = true) ||
+                trimmed.startsWith("<html", ignoreCase = true) ||
+                trimmed.startsWith("<svg", ignoreCase = true)
+            ) {
+                out.add(PreviewableBlock(language = "html", code = body))
+            }
+        }
+    }
+    return out
+}
+
+@Composable
+private fun PreviewChip(label: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .padding(top = 4.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(SuzuColors.AccentCyan.copy(alpha = 0.15f))
+            .border(1.dp, SuzuColors.AccentCyan, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(
+            "▶ $label",
+            style = MaterialTheme.typography.labelMedium.copy(color = SuzuColors.AccentCyan),
+        )
+    }
+}
 }
 
 private fun kotlinx.serialization.json.JsonPrimitive.contentOrNullSafe(): String? =

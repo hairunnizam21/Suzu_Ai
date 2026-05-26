@@ -12,10 +12,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
@@ -156,6 +159,41 @@ class SuzuClient(private val settings: SettingsStore) {
             handleStreamResponse(resp).collect { emit(it) }
         }
     }.flowOn(Dispatchers.IO)
+
+    /**
+     * Upload a file (image/code/binary/anything) for the agent to inspect.
+     * Returns the [AttachmentRef] echoed by the server, which carries the
+     * relative path the agent can pass to its `read` tool.
+     */
+    suspend fun uploadFile(
+        chatId: String,
+        file: File,
+        mimeType: String?,
+    ): AttachmentRef = withContext(Dispatchers.IO) {
+        val media = (mimeType ?: "application/octet-stream").toMediaType()
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(
+                name = "file",
+                filename = file.name,
+                body = file.asRequestBody(media),
+            )
+            .build()
+        val req = Request.Builder()
+            .url("${baseUrlOrThrow()}/v1/files/upload?chat_id=$chatId")
+            .header("Authorization", authHeader())
+            .post(body)
+            .build()
+        http.newCall(req).execute().use { resp ->
+            require(resp.isSuccessful) { "upload HTTP ${resp.code}: ${resp.message}" }
+            val text = resp.body?.string() ?: error("empty body")
+            json.decodeFromString(AttachmentRef.serializer(), text)
+        }
+    }
+
+    /** Build a download URL for an attachment (already includes auth via header is not possible here — used as preview). */
+    suspend fun fileUrl(chatId: String, relativePath: String): String =
+        "${baseUrlOrThrow()}/v1/files/$chatId/$relativePath"
 
     /**
      * Stream the agent. Emits one [SseEvent] per server event. Cancelling the

@@ -68,9 +68,22 @@ fun ChatScreen(
     val state by vm.state.collectAsState()
     val messages by vm.messages.collectAsState(initial = emptyList())
     val liveDelta by vm.liveDelta.collectAsState()
+    val attachments by vm.pendingAttachments.collectAsState()
     val listState = rememberLazyListState()
 
+    // Initial jump-to-bottom when an old chat is opened — no animation so it
+    // feels instant; the user shouldn't have to scroll manually.
+    var initialScrollDone by remember(chatId) { mutableStateOf(false) }
+    LaunchedEffect(messages.size, chatId) {
+        if (!initialScrollDone && messages.isNotEmpty()) {
+            listState.scrollToItem(messages.size - 1)
+            initialScrollDone = true
+        }
+    }
+
+    // Subsequent updates animate smoothly to the latest event.
     LaunchedEffect(messages.size, liveDelta) {
+        if (!initialScrollDone) return@LaunchedEffect
         val target = messages.size + (if (liveDelta != null) 1 else 0) - 1
         if (target >= 0) listState.animateScrollToItem(target)
     }
@@ -150,9 +163,12 @@ fun ChatScreen(
         // Input bar
         Composer(
             busy = state.busy,
+            attachments = attachments,
             onSend = { vm.send(it, onChatCreated) },
             onInject = { vm.inject(it) },
             onStop = vm::cancel,
+            onAttach = { f, mime, name -> vm.addAttachment(f, mime, name) },
+            onRemoveAttachment = vm::removeAttachment,
         )
     }
 }
@@ -186,9 +202,12 @@ private fun EmptyChatHint(modifier: Modifier = Modifier) {
 @Composable
 private fun Composer(
     busy: Boolean,
+    attachments: List<PendingAttachment>,
     onSend: (String) -> Unit,
     onInject: (String) -> Unit,
     onStop: () -> Unit,
+    onAttach: (java.io.File, String?, String?) -> Boolean,
+    onRemoveAttachment: (Int) -> Unit,
 ) {
     var text by remember { mutableStateOf("") }
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -201,6 +220,15 @@ private fun Composer(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
+
+        // Pending attachments strip — chips above the input bar
+        if (attachments.isNotEmpty()) {
+            AttachmentStrip(
+                items = attachments,
+                onRemove = onRemoveAttachment,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -211,6 +239,9 @@ private fun Composer(
                 .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            AttachButton(
+                onPicked = { f, mime, name -> onAttach(f, mime, name) },
+            )
             BasicTextField(
                 value = text,
                 onValueChange = { text = it },
