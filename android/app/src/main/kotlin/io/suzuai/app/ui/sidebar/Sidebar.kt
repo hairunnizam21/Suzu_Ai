@@ -166,34 +166,21 @@ fun Sidebar(
         // Scrollable history list
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (chats.isEmpty()) {
-                AnimatedVisibility(
-                    visible = true,
-                    enter = fadeIn(animationSpec = tween(400, delayMillis = 200)),
-                ) {
-                    Text(
-                        "No chats yet — tap \"New chat\" to start.",
-                        style = MaterialTheme.typography.bodySmall.copy(color = SuzuColors.Muted),
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
-                    )
-                }
+                Text(
+                    "No chats yet — tap \"New chat\" to start.",
+                    style = MaterialTheme.typography.bodySmall.copy(color = SuzuColors.Muted),
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                )
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                     items(chats, key = { it.id }) { chat ->
-                        AnimatedVisibility(
-                            visible = true,
-                            enter = slideInHorizontally(
-                                initialOffsetX = { -it / 3 },
-                                animationSpec = tween(durationMillis = 220),
-                            ) + fadeIn(animationSpec = tween(220)),
-                        ) {
-                            ChatRow(
-                                chat = chat,
-                                active = chat.id == activeChatId,
-                                onOpen = { onOpenChat(chat.id) },
-                                onRename = { renaming = chat },
-                                onDelete = { onDelete(chat.id) },
-                            )
-                        }
+                        ChatRow(
+                            chat = chat,
+                            active = chat.id == activeChatId,
+                            onOpen = { onOpenChat(chat.id) },
+                            onRename = { renaming = chat },
+                            onDelete = { onDelete(chat.id) },
+                        )
                     }
                 }
             }
