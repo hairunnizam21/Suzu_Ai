@@ -52,7 +52,12 @@ export ANDROID_SDK_ROOT=$ANDROID_HOME
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/34.0.0:$PATH"
 
 step "Accepting Android SDK licenses"
-yes | sdkmanager --licenses >/dev/null
+# `yes | sdkmanager` dies under `set -euo pipefail` because `yes` receives
+# SIGPIPE (exit 141) once sdkmanager closes stdin. Disable pipefail just for
+# this pipeline, and accept a non-zero exit (licenses already accepted is fine).
+set +o pipefail
+yes 2>/dev/null | sdkmanager --licenses >/dev/null || true
+set -o pipefail
 
 step "Installing Android platform-tools, build-tools;34.0.0, platforms;android-34"
 sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null
