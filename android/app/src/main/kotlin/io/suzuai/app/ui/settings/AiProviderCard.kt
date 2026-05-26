@@ -49,6 +49,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import io.suzuai.app.SuzuApp
 import io.suzuai.app.ui.theme.SuzuColors
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** Provider kind → display label shown in the dropdown. */

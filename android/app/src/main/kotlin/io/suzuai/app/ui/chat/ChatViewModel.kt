@@ -271,14 +271,6 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
                     messages = historyMsgs + newUser,
                 )
 
-                val ensuredChatId = chatId ?: java.util.UUID.randomUUID().toString().replace("-", "")
-                if (chatId == null) {
-                    repo.ensureChat(ensuredChatId, title = request.title.orEmpty().ifBlank { "New chat" })
-                    _state.value = _state.value.copy(chatId = ensuredChatId)
-                    onCreatedNewChat(ensuredChatId)
-                }
-                repo.appendMessage(ensuredChatId, role = "user", content = prompt)
-
                 _state.value = _state.value.copy(
                     activeProvider = provider,
                     sshConfigured = sshTarget != null,
