@@ -72,6 +72,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
+            ServerConfigCard()
             AiProviderCard()
             IterationsCard()
             RemoteShellCard()
