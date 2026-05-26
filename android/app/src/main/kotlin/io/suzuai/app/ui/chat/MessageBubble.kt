@@ -58,39 +58,69 @@ fun MessageBubble(message: MessageEntity) {
 
 @Composable
 private fun UserBubble(m: MessageEntity) {
-    BubbleContainer(
-        bg = SuzuColors.UserBubble,
-        accent = SuzuColors.AccentCyan,
-        leadingIcon = Icons.Outlined.Person,
-        header = "you",
-        body = m.content,
-    )
+    // User messages float to the right, like Claude / iMessage. They're the
+    // shortest things in the chat so a plain rounded bubble is enough — no
+    // header, no copy footer (the long-press menu can still copy).
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(
+                    RoundedCornerShape(
+                        topStart = 16.dp,
+                        topEnd = 16.dp,
+                        bottomStart = 16.dp,
+                        bottomEnd = 4.dp,
+                    ),
+                )
+                .background(SuzuColors.UserBubble)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+        ) {
+            Text(
+                m.content,
+                style = MaterialTheme.typography.bodyMedium.copy(color = SuzuColors.OnSurface),
+            )
+        }
+    }
 }
 
 @Composable
 private fun AssistantBubble(m: MessageEntity) {
+    // Assistant replies are left-aligned and full-width: prose flows as plain
+    // text, fenced code blocks render as separate cards with their own copy
+    // button (and a Preview button when the language is renderable).
     var previewBlock by remember(m.id) { mutableStateOf<PreviewableBlock?>(null) }
-    val blocks = remember(m.content) { extractPreviewableBlocks(m.content) }
-    BubbleContainer(
-        bg = SuzuColors.AssistantBubble,
-        accent = SuzuColors.AccentGreen,
-        leadingIcon = Icons.Outlined.SmartToy,
-        header = "suzu",
-        body = m.content,
-    ) {
-        if (blocks.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
-            blocks.forEachIndexed { idx, block ->
-                PreviewChip(
-                    label = "Preview ${block.language ?: "code"} #${idx + 1}",
-                    onClick = { previewBlock = block },
-                )
+    val segments = remember(m.content) { splitIntoSegments(m.content) }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        for (seg in segments) {
+            when (seg) {
+                is Segment.Text -> if (seg.text.isNotBlank()) {
+                    Text(
+                        seg.text,
+                        style = MaterialTheme.typography.bodyMedium.copy(color = SuzuColors.OnSurface),
+                        modifier = Modifier.padding(vertical = 2.dp),
+                    )
+                }
+                is Segment.Code -> {
+                    CodeBlock(
+                        language = seg.language,
+                        code = seg.code,
+                        previewable = isPreviewable(seg.language),
+                        onPreview = { previewBlock = PreviewableBlock(seg.language, seg.code) },
+                    )
+                }
             }
         }
         if (m.toolCallsJson.length > 2) {
             ToolCallChips(rawJson = m.toolCallsJson)
         }
     }
+
     val pb = previewBlock
     if (pb != null) {
         PreviewDialog(
@@ -183,6 +213,79 @@ private fun BubbleContainer(
             )
         }
         extra()
+    }
+}
+
+@Composable
+private fun CodeBlock(
+    language: String?,
+    code: String,
+    previewable: Boolean,
+    onPreview: () -> Unit,
+) {
+    // A self-contained code card: header strip with language label + copy
+    // (and Preview when applicable), then a monospace body in a darker box.
+    val ctx = LocalContext.current
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1500)
+            copied = false
+        }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(SuzuColors.CodeBackground)
+            .border(1.dp, SuzuColors.Border, RoundedCornerShape(10.dp)),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(SuzuColors.SurfaceVariant)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+        ) {
+            Text(
+                text = language?.lowercase() ?: "code",
+                style = MaterialTheme.typography.labelSmall.copy(color = SuzuColors.AccentCyan),
+                modifier = Modifier.weight(1f),
+            )
+            if (previewable) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable(onClick = onPreview)
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                ) {
+                    Text(
+                        "▶ preview",
+                        style = MaterialTheme.typography.labelSmall.copy(color = SuzuColors.AccentCyan),
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+            }
+            CopyButton(
+                copied = copied,
+                onClick = {
+                    copyToClipboard(ctx, language ?: "code", code)
+                    copied = true
+                },
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            Text(
+                code,
+                style = MaterialTheme.typography.bodySmall.copy(color = SuzuColors.OnSurface),
+            )
+        }
     }
 }
 
@@ -289,6 +392,46 @@ private fun copyToClipboard(ctx: Context, label: String, text: String) {
 
 /** A code block we can render in the canvas WebView. */
 data class PreviewableBlock(val language: String?, val code: String)
+
+/**
+ * Single segment of an assistant message: either prose [Text] or a fenced
+ * code block [Code]. Used by [AssistantBubble] so prose renders as flowing
+ * text and code renders as a card with its own copy button.
+ */
+sealed interface Segment {
+    data class Text(val text: String) : Segment
+    data class Code(val language: String?, val code: String) : Segment
+}
+
+/**
+ * Split a markdown-flavoured assistant reply into prose / code segments by
+ * walking triple-backtick fences. Anything outside a fence becomes [Text],
+ * each fence becomes [Code]. The split is intentionally tolerant — a
+ * mismatched fence just folds back into prose.
+ */
+fun splitIntoSegments(text: String): List<Segment> {
+    if (text.isEmpty()) return emptyList()
+    val out = mutableListOf<Segment>()
+    val fence = Regex("```([a-zA-Z0-9_+\\-]+)?[ \\t]*\\r?\\n([\\s\\S]*?)```")
+    var cursor = 0
+    fence.findAll(text).forEach { m ->
+        if (m.range.first > cursor) {
+            out.add(Segment.Text(text.substring(cursor, m.range.first).trim('\n')))
+        }
+        val lang = m.groupValues[1].ifBlank { null }
+        out.add(Segment.Code(language = lang, code = m.groupValues[2]))
+        cursor = m.range.last + 1
+    }
+    if (cursor < text.length) {
+        out.add(Segment.Text(text.substring(cursor).trim('\n')))
+    }
+    return out.filter {
+        when (it) {
+            is Segment.Text -> it.text.isNotEmpty()
+            is Segment.Code -> true
+        }
+    }
+}
 
 /**
  * Find triple-backtick fenced code blocks whose language matches [isPreviewable].
