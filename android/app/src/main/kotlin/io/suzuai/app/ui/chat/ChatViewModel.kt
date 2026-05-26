@@ -117,6 +117,55 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
         streamJob = null
         _state.value = _state.value.copy(busy = false)
         _liveDelta.value = null
+        // Tell the server too — the run may still be alive after the local
+        // stream is cancelled, so we explicitly cancel it remotely.
+        val id = _state.value.chatId ?: return
+        viewModelScope.launch { runCatching { client.cancelRun(id) } }
+    }
+
+    /**
+     * Inject a follow-up message into a live run. Used by the composer when
+     * the user types while [ChatUiState.busy] is true — the new text is
+     * spliced into the agent's conversation between iterations instead of
+     * starting a new turn.
+     */
+    fun inject(content: String) {
+        if (content.isBlank()) return
+        val id = _state.value.chatId ?: return
+        viewModelScope.launch {
+            // Persist locally too so the UI reflects the injection immediately.
+            repo.appendMessage(id, role = "user", content = content)
+            val ok = runCatching { client.inject(id, content) }.getOrDefault(false)
+            if (!ok) {
+                _state.value = _state.value.copy(
+                    error = "Inject gagal — run mungkin dah selesai. Cuba hantar semula.",
+                )
+            }
+        }
+    }
+
+    /**
+     * If the server still has a live run for this chat, attach to it instead
+     * of waiting for the user to type. Called from the screen on resume.
+     */
+    fun maybeResumeInFlight() {
+        val id = _state.value.chatId ?: return
+        if (_state.value.busy) return
+        streamJob = viewModelScope.launch {
+            val live = runCatching { client.listRuns() }.getOrDefault(emptyList())
+            val match = live.firstOrNull { it.chatId == id && !it.done }
+            if (match == null) return@launch
+            _state.value = _state.value.copy(busy = true, error = null)
+            try {
+                val ensuredChatId = id
+                consumeStreamFlow(client.resumeStream(id), ensuredChatId)
+            } catch (t: Throwable) {
+                _state.value = _state.value.copy(error = t.message ?: t.toString())
+            } finally {
+                _state.value = _state.value.copy(busy = false)
+                _liveDelta.value = null
+            }
+        }
     }
 
     fun send(prompt: String, onCreatedNewChat: (String) -> Unit = {}) {
@@ -179,18 +228,26 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
     }
 
     private suspend fun consumeStream(request: ChatRequest, ensuredChatId: String) {
+        consumeStreamFlow(client.streamChat(request), ensuredChatId, requestTitle = request.title)
+    }
+
+    private suspend fun consumeStreamFlow(
+        stream: kotlinx.coroutines.flow.Flow<io.suzuai.app.data.SseEvent>,
+        ensuredChatId: String,
+        requestTitle: String? = null,
+    ) {
         val assistantBuf = StringBuilder()
         val pendingToolCalls = mutableListOf<JsonObject>()
         var serverChatId: String = ensuredChatId
 
-        client.streamChat(request).collect { ev ->
+        stream.collect { ev ->
             val obj = ev.raw
             when (obj["type"].asStringOrNull()) {
                 "chat" -> {
                     val id = obj["chat_id"].asStringOrNull() ?: return@collect
                     serverChatId = id
                     if (id != ensuredChatId) {
-                        repo.ensureChat(id, title = request.title.orEmpty().ifBlank { "New chat" })
+                        repo.ensureChat(id, title = requestTitle.orEmpty().ifBlank { "New chat" })
                         _state.value = _state.value.copy(chatId = id)
                     }
                 }
@@ -238,7 +295,11 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
                     )
                     _liveDelta.value = null
                 }
-                "done" -> {
+                "injected" -> {
+                    // Already persisted on the inject call; just clear live delta
+                    _liveDelta.value = null
+                }
+                "done", "run_finished" -> {
                     if (assistantBuf.isNotEmpty() || pendingToolCalls.isNotEmpty()) {
                         repo.appendMessage(
                             serverChatId,

@@ -151,6 +151,7 @@ fun ChatScreen(
         Composer(
             busy = state.busy,
             onSend = { vm.send(it, onChatCreated) },
+            onInject = { vm.inject(it) },
             onStop = vm::cancel,
         )
     }
@@ -186,73 +187,86 @@ private fun EmptyChatHint(modifier: Modifier = Modifier) {
 private fun Composer(
     busy: Boolean,
     onSend: (String) -> Unit,
+    onInject: (String) -> Unit,
     onStop: () -> Unit,
 ) {
     var text by remember { mutableStateOf("") }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(SuzuColors.Surface)
-            .border(1.dp, SuzuColors.Border, RoundedCornerShape(16.dp))
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        BasicTextField(
-            value = text,
-            onValueChange = { text = it },
-            modifier = Modifier
-                .weight(1f)
-                .heightIn(min = 40.dp, max = 200.dp)
-                .padding(vertical = 10.dp),
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = SuzuColors.OnSurface),
-            cursorBrush = SolidColor(SuzuColors.AccentCyan),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Sentences,
-                imeAction = ImeAction.Default,
-            ),
-            decorationBox = { inner ->
-                if (text.isEmpty()) {
-                    Text(
-                        "Ask anything…",
-                        style = MaterialTheme.typography.bodyLarge.copy(color = SuzuColors.Muted),
-                    )
-                }
-                inner()
-            },
-        )
-        Spacer(Modifier.width(4.dp))
+    Column(modifier = Modifier.fillMaxWidth()) {
         if (busy) {
-            IconButton(
-                onClick = onStop,
+            // Hint banner — clarifies that typing while busy injects rather
+            // than starting a new turn. Helps users understand the new flow.
+            Text(
+                "Agent sedang kerja. Hantar mesej untuk tambah arahan / pembetulan.",
+                style = MaterialTheme.typography.labelSmall.copy(color = SuzuColors.AccentCyan),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(SuzuColors.Surface)
+                .border(1.dp, SuzuColors.Border, RoundedCornerShape(16.dp))
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicTextField(
+                value = text,
+                onValueChange = { text = it },
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(SuzuColors.AccentRed),
-            ) {
-                Icon(Icons.Outlined.Stop, contentDescription = "Stop", tint = Color.Black)
-            }
-        } else {
-            val enabled = text.isNotBlank()
+                    .weight(1f)
+                    .heightIn(min = 40.dp, max = 200.dp)
+                    .padding(vertical = 10.dp),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = SuzuColors.OnSurface),
+                cursorBrush = SolidColor(SuzuColors.AccentCyan),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Default,
+                ),
+                decorationBox = { inner ->
+                    if (text.isEmpty()) {
+                        Text(
+                            if (busy) "Tambah arahan…" else "Ask anything…",
+                            style = MaterialTheme.typography.bodyLarge.copy(color = SuzuColors.Muted),
+                        )
+                    }
+                    inner()
+                },
+            )
+            Spacer(Modifier.width(4.dp))
+
+            // Send button is always available — when busy it injects mid-flight.
+            val canSend = text.isNotBlank()
             IconButton(
                 onClick = {
-                    if (enabled) {
-                        val toSend = text.trim()
-                        text = ""
-                        onSend(toSend)
-                    }
+                    if (!canSend) return@IconButton
+                    val toSend = text.trim()
+                    text = ""
+                    if (busy) onInject(toSend) else onSend(toSend)
                 },
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(20.dp))
-                    .background(if (enabled) SuzuColors.AccentCyan else SuzuColors.SurfaceVariant),
+                    .background(if (canSend) SuzuColors.AccentCyan else SuzuColors.SurfaceVariant),
             ) {
                 Icon(
                     Icons.Outlined.Send,
-                    contentDescription = "Send",
-                    tint = if (enabled) Color.Black else SuzuColors.Muted,
+                    contentDescription = if (busy) "Inject" else "Send",
+                    tint = if (canSend) Color.Black else SuzuColors.Muted,
                 )
+            }
+            if (busy) {
+                Spacer(Modifier.width(4.dp))
+                IconButton(
+                    onClick = onStop,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(SuzuColors.AccentRed),
+                ) {
+                    Icon(Icons.Outlined.Stop, contentDescription = "Stop", tint = Color.Black)
+                }
             }
         }
     }

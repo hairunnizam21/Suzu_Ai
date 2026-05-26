@@ -3,9 +3,6 @@ package io.suzuai.app.ui.settings
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -15,28 +12,26 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import io.suzuai.app.SuzuApp
+import io.suzuai.app.data.PingResult
 import io.suzuai.app.ui.theme.SuzuColors
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 /**
  * Backend FastAPI server configuration: base URL + bearer token.
  *
- * Both fields are required for SuzuClient to function. The error
- * "Set server URL in Settings → Server config" is thrown by
- * [io.suzuai.app.data.SuzuClient.baseUrlOrThrow] when the URL is blank.
+ * Save flow now persists then immediately probes the server. Success surfaces
+ * a toast like "✓ Tersambung ke server v0.2.0"; failure shows the underlying
+ * HTTP / network error so the user can fix the URL or token.
  */
 @Composable
 fun ServerConfigCard() {
     val app = SuzuApp.instance
-    val scope = rememberCoroutineScope()
 
     val savedUrl by app.settings.serverUrl.collectAsState(initial = "")
     val savedToken by app.settings.serverToken.collectAsState(initial = "")
@@ -46,13 +41,13 @@ fun ServerConfigCard() {
     var token by remember { mutableStateOf(savedToken) }
     var tokenVisible by remember { mutableStateOf(false) }
 
-    // Hydrate fields once persisted values arrive (DataStore reads are async).
     LaunchedEffect(savedUrl) { if (url.isBlank()) url = savedUrl }
     LaunchedEffect(savedToken) { if (token.isBlank()) token = savedToken }
 
     Card(title = "Server config", icon = "🖥️") {
         Text(
-            "Backend FastAPI agent. Run install.sh on your VPS to get the SUZU_TOKEN.",
+            "Backend FastAPI agent. Run install.sh on your VPS to get the SUZU_TOKEN. " +
+                "Save akan check sambungan secara automatik.",
             color = SuzuColors.Muted,
         )
         Spacer(Modifier.height(12.dp))
@@ -85,24 +80,33 @@ fun ServerConfigCard() {
         )
         Spacer(Modifier.height(16.dp))
 
-        Button(
-            onClick = {
-                scope.launch {
-                    app.settings.setServer(
-                        url = url,
-                        token = token,
-                        maxIter = savedMaxIter,
-                    )
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = SuzuColors.AccentCyan,
-                contentColor = SuzuColors.Background,
-            ),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Text("Save server settings", fontWeight = FontWeight.SemiBold)
+        SaveButton(label = "Save & test connection") {
+            // 1. Validation
+            if (url.isBlank()) return@SaveButton SaveOutcome.Fail("Server URL kosong")
+            if (token.isBlank()) return@SaveButton SaveOutcome.Fail("Token kosong")
+            if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                return@SaveButton SaveOutcome.Fail("URL kena mula http:// atau https://")
+            }
+
+            // 2. Persist
+            app.settings.setServer(
+                url = url,
+                token = token,
+                maxIter = savedMaxIter,
+            )
+
+            // 3. Verify by reading back
+            val readUrl = app.settings.serverUrl.first()
+            val readToken = app.settings.serverToken.first()
+            if (readUrl != url.trim() || readToken != token.trim()) {
+                return@SaveButton SaveOutcome.Fail("DataStore tak simpan ikut yang dimasukkan")
+            }
+
+            // 4. Probe the server with the new credentials
+            when (val ping = app.client.ping()) {
+                is PingResult.Ok -> SaveOutcome.Ok("Tersambung ke server v${ping.version}")
+                is PingResult.Error -> SaveOutcome.Fail("Tersimpan tapi sambungan gagal: ${ping.message}")
+            }
         }
     }
 }

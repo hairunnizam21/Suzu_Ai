@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from .config import settings
@@ -24,17 +24,49 @@ from .tools.base import ToolContext
 logger = logging.getLogger("suzu.agent")
 
 
-DEFAULT_SYSTEM_PROMPT = """You are Suzu_Ai, a Devin-style coding assistant running on a small private \
-server for a single user. You have full shell access inside a session workspace. Be terse, decisive, \
-and prefer to USE TOOLS rather than describing what you would do. When the user asks for code changes, \
-use `read`, then `edit` or `write`. When they ask to build/install things, use `shell`. When they ask \
-about an APK, use `apk_decompile` (apktool to modify, jadx to read). Always commit progress with \
-`shell` (git add/commit) where reasonable. If a tool errors, read the message carefully and try a \
-fix before asking the user."""
+DEFAULT_SYSTEM_PROMPT = """You are Suzu_Ai, a Devin-style autonomous coding agent running on a private \
+server for a single user. You have full shell access inside a per-session workspace.
+
+Operating principles (follow strictly):
+
+1. ACT, don't narrate. Prefer tools over prose. If a step is doable with a tool, execute it now.
+2. Plan briefly, then execute. For non-trivial tasks, output 3-7 short bullet steps, then start \
+running them. Update the plan as you discover new info.
+3. Verify your own work. After every code change run the build/tests/lints that exist. After every \
+shell command read the exit code and output. If something fails, fix and retry, do not just \
+apologise.
+4. Be incremental. Read before writing. Use `grep`/`ls`/`read` to confirm assumptions instead of \
+guessing. Make small commits with `shell` (`git add` + `git commit -m '...'`) at natural \
+checkpoints.
+5. Mid-flight injections. The user may push extra instructions while you are working — they will \
+appear as new `user` messages between iterations. Treat them as authoritative: re-evaluate the \
+plan, then continue.
+6. Tool selection cheatsheet:
+     - inspect code: `read`, `grep`, `ls`
+     - modify code: `edit` (preferred for small diffs), `write` (full rewrite)
+     - run anything: `shell` (build, install, git, curl, python, ...)
+     - APK work: `apk_decompile`, `apk_recompile`, `apk_sign`
+7. Failure handling. On a tool error: re-read the error, form a hypothesis, try a fix. If the same \
+approach fails twice, change strategy — do not loop on the same broken command.
+8. Be terse in chat text. Long explanations belong in code comments / commit messages, not the \
+chat stream.
+9. Stop when the user's request is genuinely satisfied, the build is green, and you have no more \
+useful actions to take. Do not run extra iterations to look busy."""
 
 
-async def run_agent(req: ChatRequest) -> AsyncIterator[dict[str, Any]]:
-    """Yield SSE-shaped events: dicts that the HTTP layer renders as `data: <json>\\n\\n`."""
+async def run_agent(
+    req: ChatRequest,
+    *,
+    inject_drain: "Callable[[], list[Message]] | None" = None,
+    is_cancelled: "Callable[[], bool] | None" = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield SSE-shaped events: dicts that the HTTP layer renders as `data: <json>\\n\\n`.
+
+    Optional hooks (used by the persistent runner):
+      * `inject_drain` — called between iterations; returns a list of new user
+        Messages to splice into the conversation before the next turn.
+      * `is_cancelled` — polled between iterations; returns True to stop early.
+    """
 
     chat_id = req.chat_id or uuid.uuid4().hex
     yield {"type": "chat", "chat_id": chat_id}
@@ -55,12 +87,35 @@ async def run_agent(req: ChatRequest) -> AsyncIterator[dict[str, Any]]:
 
     messages: list[Message] = list(req.messages)
     system = req.system_prompt or DEFAULT_SYSTEM_PROMPT
-    max_iter = max(1, min(req.max_iterations, 500))
+    # max_iterations <= 0 means "unlimited" — the user toggled the switch.
+    if req.max_iterations <= 0:
+        max_iter = None  # unlimited
+    else:
+        max_iter = max(1, min(req.max_iterations, 10_000))
 
     iteration = 0
-    while iteration < max_iter:
+    while True:
+        if max_iter is not None and iteration >= max_iter:
+            break
         iteration += 1
-        yield {"type": "iteration", "n": iteration, "max": max_iter}
+        yield {"type": "iteration", "n": iteration, "max": max_iter or 0}
+
+        # Cooperative cancellation between iterations
+        if is_cancelled is not None and is_cancelled():
+            yield {"type": "done", "stop_reason": "cancelled"}
+            return
+
+        # Drain any user-injected mid-flight messages — they become part of the
+        # conversation so the next assistant turn sees them.
+        if inject_drain is not None:
+            extras = inject_drain()
+            for extra in extras:
+                messages.append(extra)
+                yield {
+                    "type": "injected",
+                    "role": extra.role,
+                    "content": extra.content,
+                }
 
         # Stream the next assistant turn
         text_buf: list[str] = []
@@ -150,7 +205,10 @@ async def run_agent(req: ChatRequest) -> AsyncIterator[dict[str, Any]]:
     yield {
         "type": "error",
         "kind": "max_iterations",
-        "message": f"reached max_iterations={max_iter}; bump it from the client settings if you need more.",
+        "message": (
+            f"reached max_iterations={max_iter}; bump it or toggle Unlimited "
+            "from the client settings if you need more."
+        ),
     }
 
 

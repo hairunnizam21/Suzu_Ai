@@ -52,6 +52,7 @@ data class ChatRequest(
     val title: String? = null,
     val provider: ProviderProfile,
     @SerialName("system_prompt") val systemPrompt: String? = null,
+    /** Pass 0 for unlimited iterations. */
     @SerialName("max_iterations") val maxIterations: Int = 100,
     /** Omitted when the user toggles Unlimited — provider keeps its own default. */
     @SerialName("max_tokens") val maxTokens: Int? = null,
@@ -60,6 +61,28 @@ data class ChatRequest(
     @SerialName("ssh_target") val sshTarget: SshTarget? = null,
     val messages: List<ApiMessage>,
 )
+
+@Serializable
+data class InjectRequest(
+    val content: String,
+)
+
+@Serializable
+data class RunStatus(
+    @SerialName("chat_id") val chatId: String,
+    val done: Boolean,
+    val cancelled: Boolean,
+    @SerialName("started_at") val startedAt: Long,
+    @SerialName("last_event_at") val lastEventAt: Long,
+    @SerialName("history_size") val historySize: Int,
+    val subscribers: Int,
+)
+
+/** Result of a server reachability + auth probe. */
+sealed interface PingResult {
+    data class Ok(val version: String) : PingResult
+    data class Error(val message: String) : PingResult
+}
 
 /* ---------------------------------------------------------------------------
  *  Response / event DTOs                                                     *

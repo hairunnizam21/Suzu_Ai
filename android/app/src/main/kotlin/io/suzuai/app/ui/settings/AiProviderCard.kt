@@ -290,6 +290,52 @@ fun AiProviderCard() {
         ) {
             Text("Save AI settings", fontWeight = FontWeight.SemiBold)
         }
+        Button(
+            onClick = {
+                scope.launch {
+                    app.settings.setAi(
+                        kind = kind,
+                        baseUrl = baseUrl.ifBlank { defaultBaseUrl(kind) },
+                        model = model.ifBlank { defaultModel(kind) },
+                        apiKey = apiKey,
+                        maxTokensUnlimited = unlimited,
+                        maxTokens = maxTokens,
+                        temperature = temperature,
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = SuzuColors.AccentCyan,
+                contentColor = SuzuColors.Background,
+            ),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Text("Save AI settings", fontWeight = FontWeight.SemiBold)
+        }
+        SaveButton(label = "Save & verify AI settings") {
+            if (model.isBlank() && defaultModel(kind).isBlank()) {
+                return@SaveButton SaveOutcome.Fail("Model kosong")
+            }
+            if (apiKey.isBlank()) return@SaveButton SaveOutcome.Fail("API key kosong")
+            app.settings.setAi(
+                kind = kind,
+                baseUrl = baseUrl.ifBlank { defaultBaseUrl(kind) },
+                model = model.ifBlank { defaultModel(kind) },
+                apiKey = apiKey,
+                maxTokensUnlimited = unlimited,
+                maxTokens = maxTokens,
+                temperature = temperature,
+            )
+            // Verify
+            val readKey = kotlinx.coroutines.flow.first(app.settings.aiApiKey)
+            val readModel = kotlinx.coroutines.flow.first(app.settings.aiModel)
+            if (readKey == apiKey.trim() && readModel == (model.ifBlank { defaultModel(kind) }).trim()) {
+                SaveOutcome.Ok("AI provider tersimpan: ${labelOf(kind)}")
+            } else {
+                SaveOutcome.Fail("Verifikasi DataStore gagal")
+            }
+        }
     }
 }
 

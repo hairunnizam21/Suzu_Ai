@@ -37,6 +37,7 @@ class SettingsStore(private val context: Context) {
         val ServerUrl = stringPreferencesKey("server_url")
         val ServerToken = stringPreferencesKey("server_token")
         val ServerMaxIter = intPreferencesKey("server_max_iter")
+        val ServerMaxIterUnlimited = booleanPreferencesKey("server_max_iter_unlimited")
 
         // SSH remote shell (optional — used by the agent's shell tool when filled)
         val SshHost = stringPreferencesKey("ssh_host")
@@ -91,19 +92,22 @@ class SettingsStore(private val context: Context) {
     val serverToken: Flow<String> = context.dataStore.data.map { it[Keys.ServerToken].orEmpty() }
     val defaultMaxIterations: Flow<Int> =
         context.dataStore.data.map { it[Keys.ServerMaxIter] ?: 100 }
+    val defaultMaxIterationsUnlimited: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.ServerMaxIterUnlimited] ?: false }
 
     suspend fun setServer(url: String, token: String, maxIter: Int) {
         context.dataStore.edit {
             it[Keys.ServerUrl] = url.trim()
             it[Keys.ServerToken] = token.trim()
-            it[Keys.ServerMaxIter] = maxIter.coerceIn(1, 500)
+            it[Keys.ServerMaxIter] = maxIter.coerceIn(1, 10_000)
         }
     }
 
     /** Persist only the iteration count, leaving URL/token untouched. */
-    suspend fun setDefaultMaxIterations(maxIter: Int) {
+    suspend fun setDefaultMaxIterations(maxIter: Int, unlimited: Boolean = false) {
         context.dataStore.edit {
-            it[Keys.ServerMaxIter] = maxIter.coerceIn(1, 500)
+            it[Keys.ServerMaxIter] = maxIter.coerceIn(1, 10_000)
+            it[Keys.ServerMaxIterUnlimited] = unlimited
         }
     }
 

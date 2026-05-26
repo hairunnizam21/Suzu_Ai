@@ -64,7 +64,10 @@ class ChatRequest(BaseModel):
     title: str | None = None
     provider: ProviderProfile
     system_prompt: str | None = None
-    max_iterations: int = 100
+    max_iterations: int = Field(
+        default=100,
+        description="Pass 0 (or any non-positive int) to run with no iteration cap.",
+    )
     max_tokens: int | None = Field(
         default=None,
         description="When null, the provider's own default is used (Unlimited toggle from the client).",
@@ -76,6 +79,22 @@ class ChatRequest(BaseModel):
     )
     ssh_target: SshTarget | None = None
     messages: list[Message]
+
+
+class InjectRequest(BaseModel):
+    """Mid-flight user message pushed into a live run."""
+
+    content: str = Field(min_length=1)
+
+
+class RunStatus(BaseModel):
+    chat_id: str
+    done: bool
+    cancelled: bool
+    started_at: int
+    last_event_at: int
+    history_size: int
+    subscribers: int
 
 
 class ChatSummary(BaseModel):

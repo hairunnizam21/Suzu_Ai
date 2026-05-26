@@ -75,6 +75,89 @@ class SuzuClient(private val settings: SettingsStore) {
     }
 
     /**
+     * Probe both reachability and auth in one call. Returns a [PingResult]
+     * the Settings UI can use to render an explicit success/failure toast.
+     */
+    suspend fun ping(): PingResult = withContext(Dispatchers.IO) {
+        runCatching {
+            val url = "${baseUrlOrThrow()}/v1/config"
+            val req = Request.Builder()
+                .url(url)
+                .header("Authorization", authHeader())
+                .get()
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val body = resp.body?.string().orEmpty()
+                    val cfg = runCatching {
+                        json.decodeFromString(ConfigResponse.serializer(), body)
+                    }.getOrNull()
+                    PingResult.Ok(version = cfg?.serverVersion ?: "unknown")
+                } else {
+                    PingResult.Error("HTTP ${resp.code} ${resp.message}")
+                }
+            }
+        }.getOrElse { t -> PingResult.Error(t.message ?: t.toString()) }
+    }
+
+    /** POST `/v1/chats/{id}/inject` — push a follow-up message into a live run. */
+    suspend fun inject(chatId: String, content: String): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val body = json.encodeToString(InjectRequest.serializer(), InjectRequest(content))
+            val req = Request.Builder()
+                .url("${baseUrlOrThrow()}/v1/chats/$chatId/inject")
+                .header("Authorization", authHeader())
+                .post(body.toRequestBody(JSON_MEDIA))
+                .build()
+            http.newCall(req).execute().use { it.isSuccessful }
+        }.getOrDefault(false)
+    }
+
+    /** POST `/v1/chats/{id}/cancel` — cancel a live run. */
+    suspend fun cancelRun(chatId: String): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder()
+                .url("${baseUrlOrThrow()}/v1/chats/$chatId/cancel")
+                .header("Authorization", authHeader())
+                .post("".toRequestBody(JSON_MEDIA))
+                .build()
+            http.newCall(req).execute().use { it.isSuccessful }
+        }.getOrDefault(false)
+    }
+
+    /** GET `/v1/runs` — list runs the server thinks are live. */
+    suspend fun listRuns(): List<RunStatus> = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder()
+                .url("${baseUrlOrThrow()}/v1/runs")
+                .header("Authorization", authHeader())
+                .get()
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@runCatching emptyList<RunStatus>()
+                val body = resp.body?.string().orEmpty()
+                json.decodeFromString(
+                    kotlinx.serialization.builtins.ListSerializer(RunStatus.serializer()),
+                    body,
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /** Reconnect to an in-flight run via GET `/v1/chats/{id}/stream`. */
+    fun resumeStream(chatId: String): Flow<SseEvent> = flow {
+        val req = Request.Builder()
+            .url("${baseUrlOrThrow()}/v1/chats/$chatId/stream")
+            .header("Authorization", authHeader())
+            .header("Accept", "text/event-stream")
+            .get()
+            .build()
+        http.newCall(req).execute().use { resp ->
+            handleStreamResponse(resp).collect { emit(it) }
+        }
+    }.flowOn(Dispatchers.IO)
+
+    /**
      * Stream the agent. Emits one [SseEvent] per server event. Cancelling the
      * collecting coroutine cancels the underlying HTTP call cleanly.
      */

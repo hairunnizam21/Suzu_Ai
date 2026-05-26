@@ -158,28 +158,33 @@ fun RemoteShellCard() {
         )
         Spacer(Modifier.height(16.dp))
 
-        Button(
-            onClick = {
-                scope.launch {
-                    app.settings.setSsh(
-                        host = host,
-                        port = portText.toIntOrNull() ?: 22,
-                        user = user,
-                        authMode = authMode,
-                        password = password,
-                        privateKey = privateKey,
-                        workspace = workspace,
-                    )
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = SuzuColors.AccentCyan,
-                contentColor = SuzuColors.Background,
-            ),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Text("Save SSH settings", fontWeight = FontWeight.SemiBold)
+        SaveButton(label = "Save SSH settings") {
+            if (host.isNotBlank() && user.isBlank()) {
+                return@SaveButton SaveOutcome.Fail("Username kena diisi bila host dah diisi")
+            }
+            if (authMode == "password" && host.isNotBlank() && password.isBlank()) {
+                return@SaveButton SaveOutcome.Fail("Password kosong")
+            }
+            if (authMode == "key" && host.isNotBlank() && privateKey.isBlank()) {
+                return@SaveButton SaveOutcome.Fail("Private key kosong")
+            }
+            app.settings.setSsh(
+                host = host,
+                port = portText.toIntOrNull() ?: 22,
+                user = user,
+                authMode = authMode,
+                password = password,
+                privateKey = privateKey,
+                workspace = workspace,
+            )
+            val readHost = kotlinx.coroutines.flow.first(app.settings.sshHost)
+            val readUser = kotlinx.coroutines.flow.first(app.settings.sshUser)
+            if (readHost == host.trim() && readUser == user.trim()) {
+                if (host.isBlank()) SaveOutcome.Ok("SSH dikosongkan (guna server tempatan)")
+                else SaveOutcome.Ok("Tersimpan: $user@$host:${portText.ifBlank { "22" }}")
+            } else {
+                SaveOutcome.Fail("Verifikasi gagal")
+            }
         }
     }
 }
