@@ -1,0 +1,74 @@
+# Android
+android/.gradle/
+android/.idea/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+android/.externalNativeBuild
+android/.cxx/
+*.iml
+*.hprof
+*.apk
+*.aab
+*.ap_
+
+# Gradle
+.gradle/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+server/venv/
+server/.venv/
+server/env/
+server/build/
+server/develop-eggs/
+server/dist/
+server/downloads/
+server/eggs/
+server/.eggs/
+server/lib/
+server/lib64/
+server/parts/
+server/sdist/
+server/var/
+server/wheels/
+server/*.egg-info/
+server/.installed.cfg
+server/*.egg
+server/.pytest_cache/
+server/.coverage
+server/htmlcov/
+server/.tox/
+server/.mypy_cache/
+server/.ruff_cache/
+
+# Env
+.env
+.env.local
+*.secret
+secrets/
+workspace/
+sessions.db
+sessions.db-*
+
+# Editors
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Keystores (debug ok, release no)
+*.jks
+!debug.keystore
