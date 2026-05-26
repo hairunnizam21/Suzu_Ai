@@ -100,6 +100,13 @@ class SettingsStore(private val context: Context) {
         }
     }
 
+    /** Persist only the iteration count, leaving URL/token untouched. */
+    suspend fun setDefaultMaxIterations(maxIter: Int) {
+        context.dataStore.edit {
+            it[Keys.ServerMaxIter] = maxIter.coerceIn(1, 500)
+        }
+    }
+
     /* ---------- SSH ---------- */
 
     val sshHost: Flow<String> = context.dataStore.data.map { it[Keys.SshHost].orEmpty() }
