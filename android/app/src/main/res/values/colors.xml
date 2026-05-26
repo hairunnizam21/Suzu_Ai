@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="suzu_bg">#0A0F12</color>
+    <color name="suzu_surface">#0E1418</color>
+    <color name="suzu_accent">#22D3EE</color>
+    <color name="suzu_text">#C9D6DD</color>
+</resources>

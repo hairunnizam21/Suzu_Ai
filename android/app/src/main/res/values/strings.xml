@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Suzu_Ai</string>
+    <string name="new_chat">New chat</string>
+    <string name="history">History</string>
+    <string name="settings">Settings</string>
+    <string name="account">Account</string>
+    <string name="api_providers">API Providers</string>
+    <string name="server_config">Server config</string>
+    <string name="send">Send</string>
+    <string name="stop">Stop</string>
+    <string name="copy">Copy</string>
+    <string name="rename">Rename</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="add_provider">Add provider</string>
+    <string name="ask_anything">Ask anything…</string>
+    <string name="connecting">connecting…</string>
+    <string name="connected">connected</string>
+    <string name="no_connection">no connection</string>
+</resources>
