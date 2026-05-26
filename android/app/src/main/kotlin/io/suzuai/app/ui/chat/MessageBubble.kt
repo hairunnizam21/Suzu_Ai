@@ -335,7 +335,6 @@ private fun PreviewChip(label: String, onClick: () -> Unit) {
         )
     }
 }
-}
 
 private fun kotlinx.serialization.json.JsonPrimitive.contentOrNullSafe(): String? =
     runCatching { content }.getOrNull()
