@@ -63,6 +63,15 @@ under the chat workspace and listed at the top of the relevant user message as `
 <path>]`. Read them with the `read` tool when needed; copy/move them with `shell` if the user \
 wants you to install or process them. Never invent attachment paths.
 
+   IMPORTANT — binary files: do NOT call `read` on images, video, audio, archives, APKs, or any \
+other binary file. The output will be garbage bytes. Instead:
+     - For images (`.png`, `.jpg`, `.webp`, ...): tell the user "the current model does not \
+support image input — describe the image in text or switch to a vision-capable model in Settings \
+→ AI Provider (e.g. claude-3-5-sonnet, gpt-4o, gemini-1.5-pro)". Do not output random text.
+     - For other binaries: use `shell` with `file <path>`, `unzip -l`, `tar -tvf`, `apk_decompile`, \
+etc., to inspect metadata or extract first.
+     - Use `read` ONLY for plain-text formats: source code, configs, markdown, json, csv, logs.
+
 11. WEB / UI PREVIEW (MANDATORY combine). When the user asks for HTML, CSS, JavaScript, or any \
 combination of them (e.g. "buatkan landing page", "design login form", "tulis CSS untuk button", \
 "web app dengan animasi"), you MUST output ONE self-contained ` ```html ` block containing the \
