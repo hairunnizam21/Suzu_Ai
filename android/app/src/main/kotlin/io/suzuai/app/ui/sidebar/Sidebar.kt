@@ -1,6 +1,17 @@
 package io.suzuai.app.ui.sidebar
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -70,90 +81,150 @@ fun Sidebar(
 
     Column(modifier = Modifier.fillMaxSize().background(SuzuColors.Surface)) {
 
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, end = 16.dp, top = 24.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        // Header — animated slide in from the left
+        AnimatedVisibility(
+            visible = true,
+            enter = slideInHorizontally(
+                initialOffsetX = { -it / 2 },
+                animationSpec = tween(durationMillis = 280),
+            ) + fadeIn(animationSpec = tween(durationMillis = 280)),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 12.dp, top = 18.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Suzu",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        color = SuzuColors.AccentCyan,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "lite",
+                    style = MaterialTheme.typography.labelSmall.copy(color = SuzuColors.Muted),
+                )
+            }
+        }
+
+        // New chat button — animated slide-in
+        AnimatedVisibility(
+            visible = true,
+            enter = slideInVertically(
+                initialOffsetY = { -it / 4 },
+                animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
+            ) + fadeIn(animationSpec = tween(220)),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(SuzuColors.AccentCyan.copy(alpha = 0.12f))
+                    .border(1.dp, SuzuColors.AccentCyan.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                    .clickable(onClick = onNewChat)
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Outlined.Add,
+                    contentDescription = null,
+                    tint = SuzuColors.AccentCyan,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "New chat",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = SuzuColors.AccentCyan,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // History label — fade in
+        AnimatedVisibility(
+            visible = true,
+            enter = fadeIn(animationSpec = tween(durationMillis = 350, delayMillis = 100)),
         ) {
             Text(
-                text = "Suzu_Ai",
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    color = SuzuColors.AccentCyan,
-                    fontWeight = FontWeight.Bold,
+                "Recent",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    color = SuzuColors.Muted,
+                    fontWeight = FontWeight.SemiBold,
                 ),
-            )
-            Spacer(Modifier.weight(1f))
-            Text("lite", style = MaterialTheme.typography.labelSmall.copy(color = SuzuColors.Muted))
-        }
-
-        // New chat button
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(SuzuColors.SurfaceVariant)
-                .clickable(onClick = onNewChat)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Outlined.Add, contentDescription = null, tint = SuzuColors.AccentCyan)
-            Spacer(Modifier.width(10.dp))
-            Text(
-                "New chat",
-                style = MaterialTheme.typography.bodyLarge.copy(color = SuzuColors.OnSurface),
+                modifier = Modifier.padding(start = 18.dp, top = 6.dp, bottom = 4.dp),
             )
         }
-
-        Spacer(Modifier.height(20.dp))
-
-        // History label
-        Text(
-            "HISTORY",
-            style = MaterialTheme.typography.labelSmall.copy(color = SuzuColors.Muted),
-            modifier = Modifier.padding(start = 20.dp, bottom = 4.dp),
-        )
 
         // Scrollable history list
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (chats.isEmpty()) {
-                Text(
-                    "No chats yet — tap “New chat” to start.",
-                    style = MaterialTheme.typography.bodySmall.copy(color = SuzuColors.Muted),
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-                )
+                AnimatedVisibility(
+                    visible = true,
+                    enter = fadeIn(animationSpec = tween(400, delayMillis = 200)),
+                ) {
+                    Text(
+                        "No chats yet — tap \"New chat\" to start.",
+                        style = MaterialTheme.typography.bodySmall.copy(color = SuzuColors.Muted),
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                    )
+                }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                     items(chats, key = { it.id }) { chat ->
-                        ChatRow(
-                            chat = chat,
-                            active = chat.id == activeChatId,
-                            onOpen = { onOpenChat(chat.id) },
-                            onRename = { renaming = chat },
-                            onDelete = { onDelete(chat.id) },
-                        )
+                        AnimatedVisibility(
+                            visible = true,
+                            enter = slideInHorizontally(
+                                initialOffsetX = { -it / 3 },
+                                animationSpec = tween(durationMillis = 220),
+                            ) + fadeIn(animationSpec = tween(220)),
+                        ) {
+                            ChatRow(
+                                chat = chat,
+                                active = chat.id == activeChatId,
+                                onOpen = { onOpenChat(chat.id) },
+                                onRename = { renaming = chat },
+                                onDelete = { onDelete(chat.id) },
+                            )
+                        }
                     }
                 }
             }
         }
 
-        Divider(color = SuzuColors.Border, thickness = 1.dp)
+        Divider(color = SuzuColors.Border.copy(alpha = 0.5f), thickness = 1.dp)
 
-        // Settings row (bottom)
+        // Config JSON — quick import/export so the user doesn't have to open
+        // the Settings screen for routine setup.
+        Spacer(Modifier.height(8.dp))
+        ConfigJsonCard()
+        Spacer(Modifier.height(8.dp))
+
+        // Settings row (bottom) — animated, more compact
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onOpenSettings)
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 18.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Outlined.Settings, contentDescription = null, tint = SuzuColors.AccentCyan)
+            Icon(
+                Icons.Outlined.Settings,
+                contentDescription = null,
+                tint = SuzuColors.Muted,
+                modifier = Modifier.size(18.dp),
+            )
             Spacer(Modifier.width(12.dp))
             Text(
                 "Settings",
-                style = MaterialTheme.typography.bodyLarge.copy(color = SuzuColors.OnSurface),
+                style = MaterialTheme.typography.bodyMedium.copy(color = SuzuColors.OnSurface),
             )
         }
     }

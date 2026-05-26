@@ -229,7 +229,7 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
                 // scoped to it. If new, mint locally and persist immediately.
                 val ensuredChatId = chatId ?: java.util.UUID.randomUUID().toString().replace("-", "")
                 if (chatId == null) {
-                    repo.ensureChat(ensuredChatId, title = prompt.lineSequence().first().take(60))
+                    repo.ensureChat(ensuredChatId, title = TitleGen.titleFor(prompt))
                     _state.value = _state.value.copy(chatId = ensuredChatId)
                     onCreatedNewChat(ensuredChatId)
                 }
@@ -275,7 +275,7 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
                     // two parallel chat rows (one local, one server-side) and
                     // the user sees their conversation split / duplicated.
                     chatId = ensuredChatId,
-                    title = if (chatId == null) prompt.lineSequence().first().take(60) else null,
+                    title = if (chatId == null) TitleGen.titleFor(prompt) else null,
                     provider = provider,
                     maxIterations = maxIter,
                     maxTokens = maxTokens,

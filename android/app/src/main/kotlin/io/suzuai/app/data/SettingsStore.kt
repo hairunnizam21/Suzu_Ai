@@ -159,4 +159,62 @@ class SettingsStore(private val context: Context) {
             it[Keys.ThemeMode] = mode
         }
     }
+
+    /* ---------- JSON export / import ---------- */
+
+    /** Snapshot every persisted setting into a [SuzuConfig]. */
+    suspend fun exportConfig(): SuzuConfig {
+        return SuzuConfig(
+            server = ServerConfig(
+                url = serverUrl.first(),
+                token = serverToken.first(),
+            ),
+            ai = AiConfig(
+                kind = aiKind.first(),
+                baseUrl = aiBaseUrl.first(),
+                model = aiModel.first(),
+                apiKey = aiApiKey.first(),
+                maxTokensUnlimited = aiMaxTokensUnlimited.first(),
+                maxTokens = aiMaxTokens.first(),
+                temperature = aiTemperature.first(),
+            ),
+            ssh = SshConfig(
+                host = sshHost.first(),
+                port = sshPort.first(),
+                user = sshUser.first(),
+                authMode = sshAuthMode.first(),
+                password = sshPassword.first(),
+                privateKey = sshPrivateKey.first(),
+                workspace = sshWorkspace.first(),
+            ),
+            agent = AgentConfig(
+                maxIterations = defaultMaxIterations.first(),
+                maxIterationsUnlimited = defaultMaxIterationsUnlimited.first(),
+            ),
+        )
+    }
+
+    /** Atomically apply a [SuzuConfig] — replaces every section. */
+    suspend fun importConfig(cfg: SuzuConfig) {
+        setServer(cfg.server.url, cfg.server.token, cfg.agent.maxIterations)
+        setAi(
+            kind = cfg.ai.kind,
+            baseUrl = cfg.ai.baseUrl,
+            model = cfg.ai.model,
+            apiKey = cfg.ai.apiKey,
+            maxTokensUnlimited = cfg.ai.maxTokensUnlimited,
+            maxTokens = cfg.ai.maxTokens,
+            temperature = cfg.ai.temperature,
+        )
+        setSsh(
+            host = cfg.ssh.host,
+            port = cfg.ssh.port,
+            user = cfg.ssh.user,
+            authMode = cfg.ssh.authMode,
+            password = cfg.ssh.password,
+            privateKey = cfg.ssh.privateKey,
+            workspace = cfg.ssh.workspace,
+        )
+        setDefaultMaxIterations(cfg.agent.maxIterations, cfg.agent.maxIterationsUnlimited)
+    }
 }
