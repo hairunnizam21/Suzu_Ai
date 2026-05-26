@@ -18,6 +18,15 @@ interface ChatDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(chat: ChatEntity)
 
+    /**
+     * Atomic "create only if missing" — used by [ChatRepository.appendMessage]
+     * to guarantee a parent chat exists before inserting a message, without
+     * the TOCTOU window of an explicit `byId(...) == null` check followed by
+     * a REPLACE upsert (which would CASCADE-delete child messages).
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfMissing(chat: ChatEntity): Long
+
     @Update
     suspend fun update(chat: ChatEntity)
 

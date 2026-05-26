@@ -260,8 +260,21 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
                     attachments = uploaded,
                 )
 
+                // Persist the user's prompt locally so it shows up immediately
+                // and survives reconnects. Use ensuredChatId — never null —
+                // so the parent chat row exists before we insert.
+                repo.appendMessage(
+                    ensuredChatId,
+                    role = "user",
+                    content = prompt + attachmentFooter,
+                )
+
                 val request = ChatRequest(
-                    chatId = chatId,
+                    // IMPORTANT: pass ensuredChatId, not the nullable chatId.
+                    // Otherwise the server mints its own id and we end up with
+                    // two parallel chat rows (one local, one server-side) and
+                    // the user sees their conversation split / duplicated.
+                    chatId = ensuredChatId,
                     title = if (chatId == null) prompt.lineSequence().first().take(60) else null,
                     provider = provider,
                     maxIterations = maxIter,
