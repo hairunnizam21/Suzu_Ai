@@ -382,6 +382,11 @@ class ChatViewModel(initialChatId: String?) : ViewModel() {
                                 pendingToolCalls,
                             ),
                         )
+                        // Clear the buffers — otherwise the next sentinel event
+                        // ("run_finished" follows "done") would re-flush the same
+                        // text and the assistant message gets persisted twice.
+                        assistantBuf.clear()
+                        pendingToolCalls.clear()
                     }
                     _liveDelta.value = null
                 }
